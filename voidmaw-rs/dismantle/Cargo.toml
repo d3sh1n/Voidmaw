@@ -1,0 +1,10 @@
+[package]
+name = "dismantle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.51", features = ["derive"] }
+rand = "0.9.2"
+windows = { version = "0.62.2", features = ["Win32_System_Memory", "Win32_System_Diagnostics_Debug", "Win32_System_Threading", "Win32_Foundation"] }
+zydis = "4.1.1"
