@@ -1,0 +1,15 @@
+[package]
+name = "voidmaw"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+windows.workspace = true
+indexmap.workspace = true
+
+[[bin]]
+name = "voidmaw"
+path = "src/main.rs"

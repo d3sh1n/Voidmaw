@@ -1,0 +1,17 @@
+[package]
+name = "dismantle"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+windows.workspace = true
+iced-x86.workspace = true
+clap.workspace = true
+indexmap.workspace = true
+
+[[bin]]
+name = "dismantle"
+path = "src/main.rs"

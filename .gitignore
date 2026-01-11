@@ -398,3 +398,18 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Rust build artifacts
+/target/
+**/target/
+Cargo.lock
+
+# Rust-specific
+*.rs.bk
+**/*.rs.bk
+
+# Generated payload files
+*.shellcode
+payload*.bin
+mimikatz*
+beacon*.bin
